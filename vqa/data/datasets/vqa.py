@@ -10,7 +10,7 @@ import sys
 import time
 import pprint
 import logging
-
+from collections import defaultdict
 import torch
 from torch.utils.data import Dataset
 from external.pytorch_pretrained_bert import BertTokenizer
@@ -160,6 +160,7 @@ class VQA(Dataset):
         self.cache_dir = os.path.join(root_path, 'cache')
         self.add_image_as_a_box = add_image_as_a_box
         self.mask_size = mask_size
+        self.image_to_index = defaultdict(int)
         if not os.path.exists(self.cache_dir):
             makedirsExist(self.cache_dir)
         self.tokenizer = tokenizer if tokenizer is not None \
@@ -173,15 +174,18 @@ class VQA(Dataset):
         self.database = self.load_annotations()
         if self.aspect_grouping:
             self.group_ids = self.group_aspect(self.database)
+        
+        # contrastive data loader
+        self.image_to_index = defaultdict(int)
 
     @property
     def data_names(self):
         if self.test_mode:
             return ['image', 'boxes', 'im_info', 'question']
         else:
-            return ['image', 'boxes', 'im_info', 'question', 'label']
-
-    def __getitem__(self, index):
+            return ['image', 'boxes', 'im_info', 'question', 'label', 'image1', 'boxes1', 'im_info1', 'question1', 'label1']
+    
+    def load_index(self, index): 
         idb = self.database[index]
 
         # image, boxes, im_info
@@ -257,6 +261,91 @@ class VQA(Dataset):
         else:
             # print([(self.answer_vocab[i], p.item()) for i, p in enumerate(label) if p.item() != 0])
             return image, boxes, im_info, q_ids, label
+
+    def __getitem__(self, index):
+        idb = self.database[index]
+
+        # image, boxes, im_info
+        boxes_data = self._load_json(idb['box_fn'])
+        if self.with_precomputed_visual_feat:
+            image = None
+            w0, h0 = idb['width'], idb['height']
+
+            boxes_features = torch.as_tensor(
+                np.frombuffer(self.b64_decode(boxes_data['features']), dtype=np.float32).reshape((boxes_data['num_boxes'], -1))
+            )
+        else:
+            image = self._load_image(idb['image_fn'])
+            w0, h0 = image.size
+        boxes = torch.as_tensor(
+            np.frombuffer(self.b64_decode(boxes_data['boxes']), dtype=np.float32).reshape(
+                (boxes_data['num_boxes'], -1))
+        )
+
+        if self.add_image_as_a_box:
+            image_box = torch.as_tensor([[0.0, 0.0, w0 - 1, h0 - 1]])
+            boxes = torch.cat((image_box, boxes), dim=0)
+            if self.with_precomputed_visual_feat:
+                if 'image_box_feature' in boxes_data:
+                    image_box_feature = torch.as_tensor(
+                        np.frombuffer(
+                            self.b64_decode(boxes_data['image_box_feature']), dtype=np.float32
+                        ).reshape((1, -1))
+                    )
+                else:
+                    image_box_feature = boxes_features.mean(0, keepdim=True)
+                boxes_features = torch.cat((image_box_feature, boxes_features), dim=0)
+        im_info = torch.tensor([w0, h0, 1.0, 1.0])
+        flipped = False
+        if self.transform is not None:
+            image, boxes, _, im_info, flipped = self.transform(image, boxes, None, im_info, flipped)
+
+        # clamp boxes
+        w = im_info[0].item()
+        h = im_info[1].item()
+        boxes[:, [0, 2]] = boxes[:, [0, 2]].clamp(min=0, max=w - 1)
+        boxes[:, [1, 3]] = boxes[:, [1, 3]].clamp(min=0, max=h - 1)
+
+        # flip: 'left' -> 'right', 'right' -> 'left'
+        if self.use_imdb:
+            q_tokens = idb['question_tokens']
+        else:
+            q_tokens = self.tokenizer.tokenize(idb['question'])
+        if flipped:
+            q_tokens = self.flip_tokens(q_tokens, verbose=False)
+        if not self.test_mode:
+            answers = idb['answers']
+            if flipped:
+                answers_tokens = [a.split(' ') for a in answers]
+                answers_tokens = [self.flip_tokens(a_toks, verbose=False) for a_toks in answers_tokens]
+                answers = [' '.join(a_toks) for a_toks in answers_tokens]
+            label = self.get_soft_target(answers)
+
+        # question
+        if self.use_imdb:
+            q_str = ' '.join(q_tokens)
+            q_retokens = self.tokenizer.tokenize(q_str)
+        else:
+            q_retokens = q_tokens
+        q_ids = self.tokenizer.convert_tokens_to_ids(q_retokens)
+
+        # concat box feature to box
+        if self.with_precomputed_visual_feat:
+            boxes = torch.cat((boxes, boxes_features), dim=-1)
+
+        if self.test_mode:
+            return image, boxes, im_info, q_ids
+        else:
+            image_name = idb['image_fn']
+            image1, boxed1, im_info1, q_ids1, label1 = None, None, None, None, None
+            if image_name in self.image_to_index: 
+                pair_index = self.image_to_index[image_name]
+                image1, boxed1, im_info1, q_ids1, label1 = self.load_index(pair_index)
+            else:
+                image1, boxed1, im_info1, q_ids1, label1 = image, np.copy(boxes), np.copy(im_info), np.copy(q_ids), np.copy(label)
+            self.image_to_index[image_name] = index
+            # print([(self.answer_vocab[i], p.item()) for i, p in enumerate(label) if p.item() != 0])
+            return image, boxes, im_info, q_ids, label, image1, boxed1, im_info1, q_ids1, label1
 
     @staticmethod
     def flip_tokens(tokens, verbose=True):

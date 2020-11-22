@@ -7,7 +7,8 @@ import subprocess
 from vqa.function.config import config, update_config
 from vqa.function.train import train_net
 from vqa.function.test import test_net
-
+import warnings
+warnings.filterwarnings("ignore")
 
 def parse_args():
     parser = argparse.ArgumentParser('Train Cognition Network')

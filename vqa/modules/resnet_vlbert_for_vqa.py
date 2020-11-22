@@ -7,7 +7,7 @@ from external.pytorch_pretrained_bert.modeling import BertPredictionHeadTransfor
 from common.module import Module
 from common.fast_rcnn import FastRCNN
 from common.visual_linguistic_bert import VisualLinguisticBert
-
+from vqa.data_aug.gaussian_blur import GaussianBlur
 BERT_WEIGHTS_NAME = 'pytorch_model.bin'
 
 
@@ -172,16 +172,21 @@ class ResNetVLBERT(Module):
                       im_info,
                       question,
                       label,
+                      image1,
+                      boxes1,
+                      im_info1,
+                      question1,
+                      label1
                       ):
         ###########################################
 
         # visual feature extraction
         images = image
+        print(images)
         box_mask = (boxes[:, :, 0] > - 1.5)
         max_len = int(box_mask.sum(1).max().item())
         box_mask = box_mask[:, :max_len]
         boxes = boxes[:, :max_len]
-
         obj_reps = self.image_feature_extractor(images=images,
                                                 boxes=boxes,
                                                 box_mask=box_mask,
