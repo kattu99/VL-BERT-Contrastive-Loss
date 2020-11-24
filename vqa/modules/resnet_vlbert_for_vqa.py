@@ -179,7 +179,11 @@ class ResNetVLBERT(Module):
                       label1
                       ):
         ###########################################
-
+        positive_output, positive_loss = self.train_forward_single(image, boxes, im_info, question, label)
+        negative_output, negative_loss = self.train_forward_single(image1,boxes1, im_info1, question1, label1)
+        return positive_output, positive_loss + negative_loss
+        
+    def train_forward_single(self, image, boxes, im_info, question, label):
         # visual feature extraction
         images = image
         print(images)
@@ -258,6 +262,8 @@ class ResNetVLBERT(Module):
                         'ans_loss': ans_loss})
 
         loss = ans_loss.mean()
+        print(loss)
+        print(type(loss))
 
         return outputs, loss
 
