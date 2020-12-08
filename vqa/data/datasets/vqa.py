@@ -20,6 +20,8 @@ from common.utils.create_logger import makedirsExist
 
 from pycocotools.coco import COCO
 
+from language_augmentation.language_augmentation import LanguageAugmentation
+
 csv.field_size_limit(sys.maxsize)
 FIELDNAMES = ['image_id', 'image_w', 'image_h', 'num_boxes', 'boxes', 'features']
 
@@ -175,6 +177,7 @@ class VQA(Dataset):
         if self.aspect_grouping:
             self.group_ids = self.group_aspect(self.database)
         
+        self.augmentation = LanguageAugmentation(self.tokenizer.vocab)
         # contrastive data loader
         self.image_to_index = defaultdict(int)
 
@@ -236,6 +239,9 @@ class VQA(Dataset):
             q_tokens = self.tokenizer.tokenize(idb['question'])
         if flipped:
             q_tokens = self.flip_tokens(q_tokens, verbose=False)
+        print(q_tokens)
+        q_tokens = self.augmentation.augment_sentence(q_tokens)
+        print(q_tokens)
         if not self.test_mode:
             answers = idb['answers']
             if flipped:
@@ -328,7 +334,8 @@ class VQA(Dataset):
         else:
             q_retokens = q_tokens
         q_ids = self.tokenizer.convert_tokens_to_ids(q_retokens)
-
+        print(q_ids)
+        print(len(self.tokenizer.vocab))
         # concat box feature to box
         if self.with_precomputed_visual_feat:
             boxes = torch.cat((boxes, boxes_features), dim=-1)
