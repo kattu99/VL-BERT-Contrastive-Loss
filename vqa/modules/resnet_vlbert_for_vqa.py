@@ -176,17 +176,21 @@ class ResNetVLBERT(Module):
                       boxes1,
                       im_info1,
                       question1,
-                      label1
+                      label1,
+                      index
                       ):
-        ###########################################
+        ########################################### 
         positive_output, positive_loss = self.train_forward_single(image, boxes, im_info, question, label)
-        negative_output, negative_loss = self.train_forward_single(image1,boxes1, im_info1, question1, label1)
-        return positive_output, positive_loss + negative_loss
+        print(index)
+        if index[0][7] != 1: 
+            return positive_output, positive_loss
+        else: 
+            negative_output, negative_loss = self.train_forward_single(image1,boxes1, im_info1, question1, label1)
+            return positive_output, positive_loss + negative_loss
         
     def train_forward_single(self, image, boxes, im_info, question, label):
         # visual feature extraction
         images = image
-        print(images)
         box_mask = (boxes[:, :, 0] > - 1.5)
         max_len = int(box_mask.sum(1).max().item())
         box_mask = box_mask[:, :max_len]
@@ -262,8 +266,6 @@ class ResNetVLBERT(Module):
                         'ans_loss': ans_loss})
 
         loss = ans_loss.mean()
-        print(loss)
-        print(type(loss))
 
         return outputs, loss
 
@@ -271,7 +273,12 @@ class ResNetVLBERT(Module):
                           image,
                           boxes,
                           im_info,
-                          question):
+                          question,
+                          image1,
+                          boxes1,
+                          im_info1,
+                          question1,
+                          ):
 
         ###########################################
 

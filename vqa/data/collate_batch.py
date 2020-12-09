@@ -1,5 +1,6 @@
 import torch
 from common.utils.clip_pad import *
+import numpy as np
 
 
 class BatchCollator(object):
@@ -38,6 +39,11 @@ class BatchCollator(object):
 
             question = ibatch[self.data_names.index('question')]
             out['question'] = clip_pad_1d(question, max_question_length, pad=0)
+            
+            array = [0 for i in range(15)]
+            if ibatch[self.data_names.index('index')] % 7 == 0:
+                array[7] = 1
+            out['index'] = torch.tensor(array)
 
             other_names = [data_name for data_name in self.data_names if data_name not in out]
             for name in other_names:
@@ -54,8 +60,6 @@ class BatchCollator(object):
             if self.append_ind:
                 batch[i] += (torch.tensor(i, dtype=torch.int64),)
         
-        print(self.data_names)
-        print("new batch")
         out_tuple = ()
         for items in zip(*batch):
             if items[0] is None or items[3] is None:

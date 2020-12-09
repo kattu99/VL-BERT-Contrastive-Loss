@@ -186,7 +186,7 @@ class VQA(Dataset):
         if self.test_mode:
             return ['image', 'boxes', 'im_info', 'question']
         else:
-            return ['image', 'boxes', 'im_info', 'question', 'label', 'image1', 'boxes1', 'im_info1', 'question1', 'label1']
+            return ['image', 'boxes', 'im_info', 'question', 'label', 'image1', 'boxes1', 'im_info1', 'question1', 'label1','index']
     
     def load_index(self, index): 
         idb = self.database[index]
@@ -327,6 +327,8 @@ class VQA(Dataset):
                 answers = [' '.join(a_toks) for a_toks in answers_tokens]
             label = self.get_soft_target(answers)
 
+        
+        q_tokens2 = self.augmentation.augment_sentence(q_tokens)
         # question
         if self.use_imdb:
             q_str = ' '.join(q_tokens)
@@ -334,6 +336,15 @@ class VQA(Dataset):
         else:
             q_retokens = q_tokens
         q_ids = self.tokenizer.convert_tokens_to_ids(q_retokens)
+         
+        if self.use_imdb:
+            q_str = ' '.join(q_tokens2)
+            q_retokens2 = self.tokenizer.tokenize(q_str)
+        else:
+            q_retokens2 = q_tokens2
+        q_ids2 = self.tokenizer.convert_tokens_to_ids(q_retokens2)
+        
+        
         print(q_ids)
         print(len(self.tokenizer.vocab))
         # concat box feature to box
@@ -344,6 +355,7 @@ class VQA(Dataset):
             return image, boxes, im_info, q_ids
         else:
             image_name = idb['image_fn']
+            '''
             image1, boxed1, im_info1, q_ids1, label1 = None, None, None, None, None
             if image_name in self.image_to_index: 
                 pair_index = self.image_to_index[image_name]
@@ -351,8 +363,9 @@ class VQA(Dataset):
             else:
                 image1, boxed1, im_info1, q_ids1, label1 = image, np.copy(boxes), np.copy(im_info), np.copy(q_ids), np.copy(label)
             self.image_to_index[image_name] = index
+            '''
             # print([(self.answer_vocab[i], p.item()) for i, p in enumerate(label) if p.item() != 0])
-            return image, boxes, im_info, q_ids, label, image1, boxed1, im_info1, q_ids1, label1
+            return image, boxes, im_info, q_ids, label, image, boxes, im_info, q_ids2, label, index
 
     @staticmethod
     def flip_tokens(tokens, verbose=True):
